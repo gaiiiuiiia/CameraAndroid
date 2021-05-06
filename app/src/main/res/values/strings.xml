@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">CameraAndroid</string>
+    <string name="camera_not_allowed">Camera not allowed</string>
+    <string name="take_photo">Take photo</string>
+    <string name="photo_success">Success</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CameraAndroid</string>
+    <string name="camera_not_allowed">Доступ к камере запрещен</string>
+    <string name="take_photo">Сделать снимок</string>
+    <string name="photo_success">Успешно</string>
+</resources>
