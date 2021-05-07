@@ -1,16 +1,16 @@
 package com.example.cameraandroid
 
 import android.graphics.ImageFormat
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CameraManager
+import android.hardware.camera2.*
 import android.media.ImageReader
+import android.os.Handler
 import android.util.SparseIntArray
 import android.view.Surface
-
-class Photograph(
-    private var cameraDevice: CameraDevice,
-    private var cameraManager: CameraManager)
+class Photographer(
+    private var cameraDevice : CameraDevice,
+    private var cameraManager: CameraManager,
+    private var photoHandler: PhotoHandler,
+    private var rotation: Int)
 {
     private var width: Int  = 640
     private var height: Int = 480
@@ -31,10 +31,16 @@ class Photograph(
         setSize()
     }
 
-    fun takePhoto()
-    {
+    fun takePhotoRequest(backgroundHandler: Handler?): Pair<ImageReader, CaptureRequest.Builder> {
         val reader = ImageReader.newInstance(width, height, ImageFormat.JPEG, 1)
+        val captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+        captureBuilder.addTarget(reader.surface)
+        captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
+        captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation))
 
+        reader.setOnImageAvailableListener(photoHandler.getToSaveListener(), backgroundHandler)
+
+        return Pair(reader, captureBuilder)
     }
 
     private fun setSize()
@@ -49,5 +55,4 @@ class Photograph(
             height = jpegSize[0].height
         }
     }
-
 }

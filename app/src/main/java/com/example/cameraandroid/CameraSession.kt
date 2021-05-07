@@ -4,27 +4,18 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
-import android.media.Image
 import android.media.ImageReader
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
-import android.util.SparseIntArray
 import android.view.Surface
 import android.view.TextureView
 import android.widget.Toast
-import java.io.File
-import java.io.FileNotFoundException
-import java.io.FileOutputStream
-import java.io.IOException
-import java.text.SimpleDateFormat
-import java.util.*
 
 class CameraSession(
     private val activity: Activity,
@@ -39,71 +30,24 @@ class CameraSession(
     private var previewWidth: Int = 0
     private var previewHeight: Int = 0
 
-    companion object {
-        private val ORIENTATIONS = SparseIntArray()
-
-        init {
-            ORIENTATIONS.append(Surface.ROTATION_0, 90)
-            ORIENTATIONS.append(Surface.ROTATION_90, 0)
-            ORIENTATIONS.append(Surface.ROTATION_180, 270)
-            ORIENTATIONS.append(Surface.ROTATION_270, 180)
-        }
-    }
-
     fun takePhoto()
     {
         cameraDevice?.let { cameraDevice ->
 
-            val photograph = Photograph(cameraDevice, manager)
+            val photoHandler = PhotoHandler(
+                activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString()
+            )
+            val photographer = Photographer(
+                                    cameraDevice,
+                                    manager,
+                                    photoHandler,
+                                    activity.windowManager.defaultDisplay.rotation)
+            val res: Pair<ImageReader, CaptureRequest.Builder> = photographer.takePhotoRequest(backgroundHandler)
 
-            val characteristics = manager.getCameraCharacteristics(cameraDevice.id)
-            val jpegSize = characteristics
-                .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                ?.getOutputSizes(ImageFormat.JPEG)
-            var width  = 640
-            var height = 480
-            if (!jpegSize.isNullOrEmpty()) {
-                width  = jpegSize[0].width
-                height = jpegSize[0].height
-            }
-            val reader = ImageReader.newInstance(width, height, ImageFormat.JPEG, 1)
             val outputSurfaces = mutableListOf(
-                OutputConfiguration(reader.surface),
+                OutputConfiguration(res.first.surface),
                 OutputConfiguration(Surface(textureView.surfaceTexture))
             )
-            val captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            captureBuilder.addTarget(reader.surface)
-            captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-
-            val rotation = activity.windowManager.defaultDisplay.rotation
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, ORIENTATIONS.get(rotation))
-
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd_hh-mm-ss", Locale.getDefault())
-            val name = dateFormat.format(Calendar.getInstance().time) + ".jpg"
-            val file = File(
-                activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES).toString(),
-                name
-            )
-            val readerListener = ImageReader.OnImageAvailableListener { reader_ ->
-                var image: Image? = null
-                try {
-                    image = reader_.acquireLatestImage()
-                    val buffer = image.planes[0].buffer
-                    val bytes = ByteArray(buffer.capacity())
-                    buffer.get(bytes)
-                    FileOutputStream(file).use {
-                        it.write(bytes)
-                    }
-
-                } catch (e: FileNotFoundException) {
-                    Log.e(javaClass.simpleName, e.message, e)
-                } catch (e: IOException) {
-                    Log.e(javaClass.simpleName, e.message, e)
-                } finally {
-                    image?.close()
-                }
-            }
-            reader.setOnImageAvailableListener(readerListener, backgroundHandler)
 
             cameraDevice.createCaptureSession(
                 SessionConfiguration(
@@ -113,7 +57,7 @@ class CameraSession(
                     object : CameraCaptureSession.StateCallback() {
                         override fun onConfigured(session: CameraCaptureSession) {
                             session.capture(
-                                captureBuilder.build(),
+                                res.second.build(),
                                 object : CameraCaptureSession.CaptureCallback() {
                                     override fun onCaptureCompleted(
                                         session: CameraCaptureSession,
@@ -232,20 +176,32 @@ class CameraSession(
             openCamera()
         }
 
-        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+        override fun onSurfaceTextureSizeChanged(
+            surface: SurfaceTexture,
+            width: Int,
+            height: Int
+        ) {
+            previewWidth = width
+            previewHeight = height
+        }
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean =false
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
     }
 
-    private fun initCameraStateCallback() = object : CameraDevice.StateCallback()
-    {
+    private fun initCameraStateCallback() = object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
             cameraDevice = camera
             createCameraPreview()
         }
 
-        override fun onDisconnected(camera: CameraDevice) {}
-        override fun onError(camera: CameraDevice, error: Int) {}
+        override fun onDisconnected(camera: CameraDevice) {
+            cameraDevice?.close()
+        }
+
+        override fun onError(camera: CameraDevice, error: Int) {
+            cameraDevice?.close()
+            cameraDevice = null
+        }
     }
 
     private fun getCameraId(): String?
